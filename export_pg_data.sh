@@ -1,102 +1,114 @@
 #!/bin/bash
 set -euo pipefail
 
-echo -e "\e[1;34m[INFO] Clone Pi Node dari server sumber ke target\e[0m"
+echo "=============================================="
+echo "    AUTO BACKUP + RESTORE PI NODE (FULL)"
+echo "=============================================="
+echo
+read -p "Masukkan IP Server Target: " TARGET_HOST
 
-# ==========================
-# Input IP target
-# ==========================
-read -p "Masukkan IP server target: " TARGET_HOST
-TARGET_USER="root"
 SOURCE_CONTAINER="mainnet"
+TARGET_USER="root"
 TARGET_CONTAINER="mainnet"
 PG_PATH="/var/lib/postgresql"
 TMP_DIR="/tmp/postgresql_data"
 
-# ==========================
-# 1. Backup PostgreSQL dari server sumber
-# ==========================
-echo -e "\e[1;32m[1/5] Membuat backup PostgreSQL dari container sumber...\e[0m"
-mkdir -p $TMP_DIR
-docker cp $SOURCE_CONTAINER:$PG_PATH/. $TMP_DIR
-echo -e "✅ Backup PostgreSQL dibuat di $TMP_DIR"
+echo
+echo "==> 1. Membuat dump PostgreSQL dari server sumber..."
+docker exec $SOURCE_CONTAINER mkdir -p /tmp/postgresql_data || true
+rm -rf /tmp/postgresql_data
+docker cp $SOURCE_CONTAINER:$PG_PATH/. /tmp/postgresql_data
+echo "✅ Dump selesai: /tmp/postgresql_data"
 
-# ==========================
-# 2. Kirim backup ke server target
-# ==========================
-echo -e "\e[1;32m[2/5] Mengirim backup ke server target $TARGET_HOST...\e[0m"
-scp -r $TMP_DIR ${TARGET_USER}@${TARGET_HOST}:/tmp/
-echo -e "✅ Backup dikirim ke $TARGET_HOST"
+echo "==> 2. Mengirim data ke server target $TARGET_HOST..."
+scp -r /tmp/postgresql_data ${TARGET_USER}@${TARGET_HOST}:/tmp/
+echo "✅ Data dikirim."
 
-# ==========================
-# 3. Instalasi Pi Node & Docker di server target + Restore
-# ==========================
-echo -e "\e[1;32m[3/5] Menjalankan instalasi Pi Node & restore di server target...\e[0m"
+echo
+echo "=============================================="
+echo "==> 3. Menjalankan proses otomatis di server target..."
+echo "=============================================="
 
-ssh ${TARGET_USER}@${TARGET_HOST} bash -s <<'ENDSSH'
+ssh -t ${TARGET_USER}@${TARGET_HOST} bash -s <<'ENDSSH'
 set -euo pipefail
 
-TARGET_CONTAINER="mainnet"
-PG_PATH="/var/lib/postgresql"
+echo "==> Update paket..."
+apt update -y
 
-echo -e "\e[1;32m[INFO] 1. Install dependencies + Docker + Pi Node\e[0m"
+echo "==> Install dependencies..."
+apt install -y ca-certificates curl gnupg lsb-release
 
-# --------- Dependencies ----------
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg lsb-release
-
-# --------- Docker ----------
-if ! command -v docker &> /dev/null; then
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-      | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt update
-    sudo apt install -y docker-ce docker-ce-cli containerd.io
-    sudo systemctl enable --now docker
+echo "==> Install Docker jika belum ada..."
+if ! command -v docker &>/dev/null; then
+    apt install -y docker.io
+    systemctl enable --now docker
+else
+    echo "Docker sudah terinstall"
 fi
 
-# --------- Pi Node ----------
-if [ ! -f /etc/apt/sources.list.d/pinetwork.list ]; then
-    sudo install -m 0755 -d /etc/apt/keyrings
+echo "==> Install Pi-Node CLI jika belum ada..."
+if ! command -v pi-node &>/dev/null; then
+    mkdir -p /etc/apt/keyrings
     curl -fsSL https://apt.minepi.com/repository.gpg.key \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/pinetwork-archive-keyring.gpg
-    sudo chmod a+r /etc/apt/keyrings/pinetwork-archive-keyring.gpg
+      | gpg --dearmor --batch -o /etc/apt/keyrings/pinetwork-archive-keyring.gpg
+
     echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/pinetwork-archive-keyring.gpg] https://apt.minepi.com stable main" \
-      | sudo tee /etc/apt/sources.list.d/pinetwork.list > /dev/null
+      > /etc/apt/sources.list.d/pinetwork.list
+
+    apt update -y
+    apt install -y pi-node
+else
+    echo "pi-node sudah terinstall"
 fi
 
-sudo apt update
-sudo apt install -y pi-node
+echo "==> Hentikan container mainnet jika ada..."
+docker stop mainnet 2>/dev/null || true
+docker rm mainnet 2>/dev/null || true
 
-# --------- Stop Node ----------
-docker exec $TARGET_CONTAINER supervisorctl stop horizon || true
-docker exec $TARGET_CONTAINER supervisorctl stop stellar-core || true
+echo "==> Jalankan pi-node initialize..."
+pi-node initialize
 
-# --------- Hapus PostgreSQL lama ----------
-docker exec $TARGET_CONTAINER bash -c "rm -rf $PG_PATH/*"
+echo "==> Stop Horizon & Core..."
+docker exec mainnet supervisorctl stop horizon || true
+docker exec mainnet supervisorctl stop stellar-core || true
 
-# --------- Copy PostgreSQL baru ----------
-docker cp /tmp/postgresql_data/. $TARGET_CONTAINER:$PG_PATH
-docker exec $TARGET_CONTAINER bash -c "chown -R postgres:postgres $PG_PATH && chmod -R 700 $PG_PATH"
+echo "==> Hapus data PostgreSQL lama..."
+docker exec mainnet bash -c 'rm -rf /var/lib/postgresql/*'
 
-# --------- Bersihkan Horizon ----------
-docker exec $TARGET_CONTAINER bash -c "rm -rf /root/.local/share/horizon/*"
+echo "==> Copy data PostgreSQL baru..."
+docker cp /tmp/postgresql_data/. mainnet:/var/lib/postgresql
+docker exec mainnet bash -c 'chown -R postgres:postgres /var/lib/postgresql && chmod -R 700 /var/lib/postgresql'
 
-# --------- Restart Node ----------
-docker exec $TARGET_CONTAINER supervisorctl restart stellar-core
-sleep 5
-docker exec $TARGET_CONTAINER supervisorctl restart horizon
-sleep 10
+echo "==> Bersihkan data Horizon lama..."
+docker exec mainnet bash -c 'rm -rf /root/.local/share/horizon/*'
 
-# --------- Status Node ----------
-docker exec $TARGET_CONTAINER supervisorctl status
+echo "==> Restart stellar-core..."
+docker exec mainnet supervisorctl restart stellar-core
+sleep 8
 
-echo -e "\e[1;32m✅ Restore selesai! Node siap digunakan.\e[0m"
+echo "==> Restart horizon..."
+docker exec mainnet supervisorctl restart horizon
+sleep 8
+
+echo "==> Status node target:"
+docker exec mainnet supervisorctl status
+
+echo "==> Proses restore server target selesai."
 ENDSSH
 
-# ==========================
-# 4. Selesai
-# ==========================
-echo -e "\e[1;34m[INFO] Semua proses selesai, node target siap!\e[0m"
+echo "=============================================="
+echo "==> 4. Restart node server sumber..."
+echo "=============================================="
+
+docker start mainnet >/dev/null 2>&1 || true
+sleep 5
+echo
+docker ps -a | grep mainnet || echo "⚠ mainnet tidak muncul — cek container"
+echo
+echo "==> Logs server sumber:"
+docker logs --tail=50 mainnet
+
+echo
+echo "=============================================="
+echo " RESTORE SELESAI TANPA ERROR! "
+echo "=============================================="
