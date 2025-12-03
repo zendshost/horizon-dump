@@ -1,6 +1,9 @@
 
 # Auto Backup & Restore Pi Node (Docker Compose)
 
+⚠️ **PERINGATAN:**  
+Script ini **hanya boleh dijalankan oleh programmer atau pengguna yang memahami Docker, Pi Node, dan sistem Linux**. Salah penggunaan dapat menyebabkan **hilangnya data atau kerusakan node**.
+
 Script ini digunakan untuk **backup data PostgreSQL dari Pi Node di server sumber** dan **restore ke server target** secara otomatis, termasuk setup Docker dan Pi-Node CLI jika belum ada. Cocok untuk migrasi node Pi Network.
 
 ---
@@ -24,6 +27,7 @@ Script ini digunakan untuk **backup data PostgreSQL dari Pi Node di server sumbe
 - Akses `root` atau user dengan sudo di server sumber & target
 - Docker sudah terinstall (script otomatis install jika belum ada)
 - Pi-Node CLI versi resmi (`pi-node`) akan diinstall otomatis jika belum ada
+- **Hanya dijalankan oleh programmer atau admin yang mengerti cara kerja node dan Docker**
 
 ---
 
@@ -86,8 +90,9 @@ flowchart TD
 
 ---
 
-## Catatan
+## Catatan Penting
 
+* **Hanya untuk pengguna berpengalaman.** Tidak direkomendasikan untuk pengguna awam.
 * Jika Pi-Node CLI sudah ada, script tetap akan menggunakannya.
 * Jika node lama di server target ada, akan dibackup otomatis.
 * Pastikan port Docker Compose container `mainnet` tidak conflict di server target.
@@ -102,4 +107,4 @@ pi-node protocol-status
 
 ## Lisensi
 
-Repository ini bersifat open source. Gunakan dengan risiko sendiri.
+Repository ini bersifat open source. Gunakan **dengan risiko sendiri**.
