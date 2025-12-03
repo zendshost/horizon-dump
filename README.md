@@ -1,22 +1,68 @@
 
-# Pi Node Backup & Restore (Docker Compose) 🟢
+# Auto Backup & Restore Pi Node (Docker Compose)
 
-Script ini memudahkan **backup dan restore node Pi Network** menggunakan **Docker Compose**, termasuk setup server target baru.
+Script ini digunakan untuk **backup data PostgreSQL dari Pi Node di server sumber** dan **restore ke server target** secara otomatis, termasuk setup Docker dan Pi-Node CLI jika belum ada. Cocok untuk migrasi node Pi Network.
 
 ---
 
 ## Fitur
 
-- Backup PostgreSQL dari container `mainnet` server sumber
-- Kirim data ke server target via SCP
-- Install otomatis Docker & Pi-Node CLI jika belum ada
+- Backup container `mainnet` di server sumber
+- Kirim data PostgreSQL ke server target via SCP
+- Install Docker & Pi-Node CLI di server target jika belum ada
+- Backup node lama di server target
+- Initialize node baru di server target dengan `--force --auto-confirm`
 - Restore data PostgreSQL ke server target
-- Inisialisasi node baru / overwrite node lama
-- Restart container node dan cek status
+- Restart container dan cek status node
+- Restart container di server sumber
 
 ---
 
-## Flowchart Proses Backup & Restore
+## Prasyarat
+
+- Server sumber dan target menggunakan Ubuntu 22.04 atau versi kompatibel
+- Akses `root` atau user dengan sudo di server sumber & target
+- Docker sudah terinstall (script otomatis install jika belum ada)
+- Pi-Node CLI versi resmi (`pi-node`) akan diinstall otomatis jika belum ada
+
+---
+
+## Cara Menjalankan
+
+1. Clone repository ini:
+
+```bash
+git clone https://github.com/zendshost/horizon-dump.git
+cd horizon-dump
+````
+
+2. Beri permission agar script bisa dijalankan:
+
+```bash
+chmod +x run.sh
+```
+
+3. Jalankan script:
+
+```bash
+./run.sh
+```
+
+4. Masukkan **IP server target** saat diminta. Script akan:
+
+   * Membuat backup PostgreSQL dari container `mainnet` di server sumber
+   * Mengirim data ke server target
+   * Install Docker & Pi-Node CLI di server target jika belum ada
+   * Backup node lama di server target
+   * Initialize node baru di server target dengan `--force --auto-confirm`
+   * Restore data PostgreSQL
+   * Restart container `mainnet` di server target
+   * Menampilkan status node target
+   * Restart container node di server sumber
+
+---
+
+## Alur Proses
 
 ```mermaid
 flowchart TD
@@ -30,72 +76,30 @@ flowchart TD
     G -- Ya --> H[Backup node lama di server target]
     G -- Tidak --> I[Lanjut]
     H --> I
-    I --> J[Initialize Pi Node di server target (--force --auto-confirm)]
+    I --> J[Initialize Pi Node di server target dengan force dan auto-confirm]
     J --> K[Restore data PostgreSQL ke server target]
     K --> L[Restart container mainnet di server target]
     L --> M[Tampilkan status node target]
     M --> N[Restart node server sumber]
     N --> O[Selesai ✅]
-````
-
----
-
-## Cara Menggunakan
-
-1. **Clone repository**
-
-```bash
-git clone https://github.com/zendshost/horizon-dump.git
-cd horizon-dump
 ```
 
-2. **Jalankan script di server sumber**
+---
+
+## Catatan
+
+* Jika Pi-Node CLI sudah ada, script tetap akan menggunakannya.
+* Jika node lama di server target ada, akan dibackup otomatis.
+* Pastikan port Docker Compose container `mainnet` tidak conflict di server target.
+* Untuk memeriksa status node target setelah restore:
 
 ```bash
-chmod +x run.sh
-./run.sh
+pi-node status
+pi-node protocol-status
 ```
-
-3. **Ikuti prompt**
-
-* Masukkan **IP server target**
-* Script akan melakukan backup, transfer, restore, dan inisialisasi node target.
-
----
-
-## Catatan Penting
-
-* Server target **harus fresh / kosong** untuk hasil maksimal.
-* Jika node target sudah ada, script akan membuat **backup node lama**.
-* Pi Node CLI versi terbaru harus tersedia dari repository resmi: `https://apt.minepi.com`
-* Semua perintah Docker dijalankan dalam container `mainnet`.
-* Pastikan SSH key atau password root server target siap digunakan.
-
----
-
-## Troubleshooting
-
-* **Pi-Node CLI tidak ditemukan**
-  Pastikan `pi-node` terinstall dengan benar dan berada di PATH (`/usr/local/bin` atau `/opt/pi-node/bin`).
-
-* **Container mainnet tidak muncul**
-  Periksa dengan:
-
-  ```bash
-  docker ps -a | grep mainnet
-  ```
-
-* **SSH gagal ke server target**
-  Pastikan server target bisa diakses dan user memiliki hak root atau sudo.
 
 ---
 
 ## Lisensi
 
-MIT License © 2025
-
----
-
-## Repository
-
-[https://github.com/zendshost/horizon-dump](https://github.com/zendshost/horizon-dump)
+Repository ini bersifat open source. Gunakan dengan risiko sendiri.
